@@ -1,0 +1,1 @@
+{"dependencies":{"dotenv":"^16.4.5","express":"^4.21.2"},"description":"API server for daily-sql-de-practice","engines":{"node":">=20"},"main":"index.js","name":"daily-sql-de-practice-server","private":true,"scripts":{"dev":"node --watch index.js","start":"node index.js","test":"node --test test/*.test.js"},"type":"module","version":"1.0.0"}

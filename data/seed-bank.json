@@ -1,0 +1,258 @@
+[
+  {
+    "seed_id": "SQL-01",
+    "track": "sql",
+    "title": "Top Earners Per Department",
+    "difficulty": "intermediate",
+    "topics": ["joins", "window functions", "ROW_NUMBER"],
+    "schema_sql": "employees(id INT, name TEXT, department_id INT, salary NUMERIC)\ndepartments(id INT, name TEXT)",
+    "statement": "For each department, return the department name, employee name, and salary of the highest-paid employee. Break ties by lowest employee id. Include departments with no employees (name NULLs for employee columns).",
+    "hints": [
+      "Rank employees within each department before joining to departments.",
+      "ROW_NUMBER() partitioned by department_id, ordered by salary DESC, id ASC gives you exactly one row per department.",
+      "Use a LEFT JOIN from departments to the ranked CTE (filtered to rn = 1) so empty departments still appear."
+    ],
+    "rubric": "Notes: tests NULL handling (INNER vs LEFT JOIN) and tie-breaking discipline — classic phone-screen fodder.",
+    "reference_answer": "WITH ranked AS (\n  SELECT e.id, e.name, e.salary, e.department_id,\n         ROW_NUMBER() OVER (\n           PARTITION BY e.department_id\n           ORDER BY e.salary DESC, e.id ASC\n         ) AS rn\n  FROM employees e\n)\nSELECT d.name AS department_name, r.name AS employee_name, r.salary\nFROM departments d\nLEFT JOIN ranked r\n  ON r.department_id = d.id AND r.rn = 1;"
+  },
+  {
+    "seed_id": "SQL-02",
+    "track": "sql",
+    "title": "Consecutive Login Days",
+    "difficulty": "advanced",
+    "topics": ["gaps-and-islands", "date arithmetic", "ROW_NUMBER"],
+    "schema_sql": "logins(user_id INT, login_date DATE)   -- one row per user per day, no dupes",
+    "statement": "For each user, find the start and end dates of their longest streak of consecutive login days. If tied, keep the earliest streak.",
+    "hints": [
+      "This is a gaps-and-islands problem: consecutive dates form an 'island'.",
+      "login_date - ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY login_date) is constant within a streak — group by it.",
+      "Aggregate each island to MIN/MAX dates and COUNT(*), then pick the longest per user with ROW_NUMBER() ordered by streak length DESC, start date ASC."
+    ],
+    "rubric": "Notes: canonical interview problem; variant syntax differs across dialects (DAY subtraction in MySQL, DATEADD in T-SQL).",
+    "reference_answer": "WITH islands AS (\n  SELECT user_id, login_date,\n         login_date\n           - (ROW_NUMBER() OVER (\n                PARTITION BY user_id ORDER BY login_date\n              )) * INTERVAL '1 day' AS island\n  FROM logins\n),\nstreaks AS (\n  SELECT user_id,\n         MIN(login_date) AS start_date,\n         MAX(login_date) AS end_date,\n         COUNT(*) AS streak_len\n  FROM islands\n  GROUP BY user_id, island\n),\nranked AS (\n  SELECT user_id, start_date, end_date, streak_len,\n         ROW_NUMBER() OVER (\n           PARTITION BY user_id\n           ORDER BY streak_len DESC, start_date ASC\n         ) AS rn\n  FROM streaks\n)\nSELECT user_id, start_date, end_date FROM ranked WHERE rn = 1;"
+  },
+  {
+    "seed_id": "SQL-03",
+    "track": "sql",
+    "title": "Monthly Active User Growth",
+    "difficulty": "intermediate",
+    "topics": ["aggregation", "conditional aggregation", "LAG"],
+    "schema_sql": "events(user_id INT, event_ts TIMESTAMP)",
+    "statement": "Compute month-over-month growth rate of monthly active users (MAU) for the last 12 months: month, mau, prior_mau, growth_pct. Define MAU as distinct users with ≥1 event that month.",
+    "hints": [
+      "First compute MAU per month: COUNT(DISTINCT user_id) grouped by DATE_TRUNC('month', event_ts).",
+      "Use LAG(mau) OVER (ORDER BY month) to get the prior month's value in the same row.",
+      "Guard against missing months with a calendar CTE, and use NULLIF on the denominator to avoid division by zero."
+    ],
+    "rubric": "Notes: NULLIF avoids div-by-zero; calendar-CTE variant earns style points.",
+    "reference_answer": "WITH mau AS (\n  SELECT DATE_TRUNC('month', event_ts)::DATE AS month,\n         COUNT(DISTINCT user_id) AS mau\n  FROM events\n  WHERE event_ts >= DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '12 months'\n  GROUP BY 1\n)\nSELECT month, mau,\n       LAG(mau) OVER (ORDER BY month) AS prior_mau,\n       ROUND(100.0 * (mau - LAG(mau) OVER (ORDER BY month))\n             / NULLIF(LAG(mau) OVER (ORDER BY month), 0), 2) AS growth_pct\nFROM mau\nORDER BY month;"
+  },
+  {
+    "seed_id": "SQL-04",
+    "track": "sql",
+    "title": "The Quiet Weeks",
+    "difficulty": "foundation",
+    "topics": ["GROUP BY", "HAVING", "aggregates"],
+    "schema_sql": "orders(order_id INT, customer_id INT, order_date DATE, amount NUMERIC)",
+    "statement": "Find customers who placed at least 2 orders but whose total spend is under 100. Return customer_id, order_count, total_spend.",
+    "hints": [
+      "You need per-customer totals: GROUP BY customer_id with COUNT(*) and SUM(amount).",
+      "Both conditions filter on aggregates, so they belong in HAVING, not WHERE.",
+      "HAVING COUNT(*) >= 2 AND SUM(amount) < 100."
+    ],
+    "rubric": "Notes: WHERE vs HAVING — the perennial warm-up trap.",
+    "reference_answer": "SELECT customer_id, COUNT(*) AS order_count, SUM(amount) AS total_spend\nFROM orders\nGROUP BY customer_id\nHAVING COUNT(*) >= 2 AND SUM(amount) < 100;"
+  },
+  {
+    "seed_id": "SQL-05",
+    "track": "sql",
+    "title": "Supplier Price Hikes",
+    "difficulty": "intermediate",
+    "topics": ["self-join", "EXISTS", "correlated subqueries"],
+    "schema_sql": "price_changes(product_id INT, supplier_id INT, price NUMERIC, effective_date DATE)",
+    "statement": "Find suppliers that raised the price of at least one product twice within a 90-day window. Return supplier_id and product_id.",
+    "hints": [
+      "Compare two price-change rows for the same supplier and product.",
+      "Self-join: p2.effective_date > p1.effective_date AND p2.effective_date <= p1.effective_date + INTERVAL '90 days' AND p2.price > p1.price.",
+      "Use SELECT DISTINCT to kill pair-duplicates; an EXISTS variant is equally valid."
+    ],
+    "rubric": "Notes: DISTINCT kills pair-duplicates; EXISTS variant equally valid — good 'show me another way' follow-up.",
+    "reference_answer": "SELECT DISTINCT p1.supplier_id, p1.product_id\nFROM price_changes p1\nJOIN price_changes p2\n  ON p2.supplier_id = p1.supplier_id\n AND p2.product_id  = p1.product_id\n AND p2.effective_date > p1.effective_date\n AND p2.effective_date <= p1.effective_date + INTERVAL '90 days'\n AND p2.price > p1.price;"
+  },
+  {
+    "seed_id": "SQL-06",
+    "track": "sql",
+    "title": "Manager Chain Depth",
+    "difficulty": "advanced",
+    "topics": ["recursive CTE"],
+    "schema_sql": "staff(id INT, name TEXT, manager_id INT NULL)  -- manager_id references staff(id)",
+    "statement": "For every employee, compute their depth in the org chart (CEO = 0) and list their full chain as `CEO > VP > ... > name`.",
+    "hints": [
+      "Use WITH RECURSIVE: the anchor selects the CEO (manager_id IS NULL) with depth 0.",
+      "The recursive term joins staff to the CTE on s.manager_id = c.id, incrementing depth and appending to the chain string.",
+      "In real data, guard against cycles with a depth cap or visited-path check."
+    ],
+    "rubric": "Notes: watch for cycles in real data (add a depth cap or visited-path check).",
+    "reference_answer": "WITH RECURSIVE chain AS (\n  SELECT id, name, manager_id, 0 AS depth,\n         name AS chain_str\n  FROM staff WHERE manager_id IS NULL\n  UNION ALL\n  SELECT s.id, s.name, s.manager_id, c.depth + 1,\n         c.chain_str || ' > ' || s.name\n  FROM staff s\n  JOIN chain c ON s.manager_id = c.id\n)\nSELECT id, name, depth, chain_str FROM chain ORDER BY depth, name;"
+  },
+  {
+    "seed_id": "SQL-07",
+    "track": "sql",
+    "title": "Pivot the Survey",
+    "difficulty": "intermediate",
+    "topics": ["conditional aggregation", "pivot"],
+    "schema_sql": "survey_responses(respondent_id INT, question TEXT, answer TEXT)",
+    "statement": "One row per respondent with a column per question. Questions are 'role', 'region', 'satisfaction'. Answers are free text.",
+    "hints": [
+      "GROUP BY respondent_id, then use one conditional expression per question column.",
+      "MAX(CASE WHEN question = 'role' THEN answer END) collapses each group to its single non-NULL answer.",
+      "Why does MAX work here? Each (respondent, question) group has at most one non-NULL value."
+    ],
+    "rubric": "Notes: MAX picks the single non-NULL per group — why MAX works here is the teaching point.",
+    "reference_answer": "SELECT respondent_id,\n  MAX(CASE WHEN question = 'role'         THEN answer END) AS role,\n  MAX(CASE WHEN question = 'region'       THEN answer END) AS region,\n  MAX(CASE WHEN question = 'satisfaction' THEN answer END) AS satisfaction\nFROM survey_responses\nGROUP BY respondent_id;"
+  },
+  {
+    "seed_id": "SQL-08",
+    "track": "sql",
+    "title": "Slowest Page by the 95th Percentile",
+    "difficulty": "advanced",
+    "topics": ["percentile functions", "GROUP BY ordering", "LIMIT with ties"],
+    "schema_sql": "page_loads(page TEXT, load_ms INT, loaded_at TIMESTAMP)",
+    "statement": "Which page had the highest 95th-percentile load time over the last 7 days? Return page and p95_load_ms. Break ties by fewest samples.",
+    "hints": [
+      "Filter to the last 7 days, then GROUP BY page.",
+      "PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY load_ms) gives the p95 per page.",
+      "ORDER BY p95_load_ms DESC, COUNT(*) ASC with LIMIT 1 handles the tie-break."
+    ],
+    "rubric": "Notes: PERCENTILE_CONT vs PERCENTILE_DISC distinction; MySQL users approximate with ordered ROW_NUMBER math — good 'different dialects' follow-up.",
+    "reference_answer": "SELECT page,\n       PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY load_ms) AS p95_load_ms\nFROM page_loads\nWHERE loaded_at >= CURRENT_DATE - INTERVAL '7 days'\nGROUP BY page\nORDER BY p95_load_ms DESC, COUNT(*) ASC\nLIMIT 1;"
+  },
+  {
+    "seed_id": "DE-01",
+    "track": "de",
+    "title": "Idempotent Daily Ingest",
+    "difficulty": "intermediate",
+    "topics": ["incremental loads", "watermarking", "dedup"],
+    "schema_sql": null,
+    "statement": "You own a daily pipeline that lands ~50 GB of JSON events from an API into S3 (partitioned by event_date), then transforms into a Redshift fact table. The vendor API sometimes re-sends the previous day's file with late corrections. Design the ingest so re-runs and re-sent files never duplicate rows in Redshift.",
+    "hints": [
+      "Think about what makes a row unique (natural key) and how you'd detect a re-sent file.",
+      "Stage into a staging table, dedupe with ROW_NUMBER() partitioned by natural key ordered by event_version DESC, then MERGE into the fact.",
+      "Make the Airflow task idempotent: full partition overwrite of staging on retry, watermark = max(event_ts) from the API response, not wall clock."
+    ],
+    "rubric": "Follow-up: how do you detect the vendor silently changed a file's contents? (Content hash at land time, stored in a manifest table.)",
+    "reference_answer": "(1) land raw files immutably by ingestion timestamp; (2) stage into a Redshift staging table with the vendor's natural key + event_version; (3) dedupe with ROW_NUMBER() partitioned by natural key ordered by event_version DESC; (4) MERGE into fact on the natural key, updating changed rows (or SCD2 if history matters); (5) Airflow task idempotent — full partition overwrite of staging on retry, watermark = max(event_ts) from the API response, not wall clock."
+  },
+  {
+    "seed_id": "DE-02",
+    "track": "de",
+    "title": "Backfill Without Breaking Prod",
+    "difficulty": "advanced",
+    "topics": ["backfills", "partitioning", "resource isolation"],
+    "schema_sql": null,
+    "statement": "A new business rule must be applied to 2 years of history in a 3 TB partitioned Parquet dataset on S3 (consumed by Presto/Trino and a Spark job). Walk through your backfill plan: how do you run it without slowing production reads, how do you validate, and how do you swap the result in?",
+    "hints": [
+      "Never overwrite production data in place — write to a shadow prefix first.",
+      "Isolate resources: separate cluster or priority queue, off-peak scheduling, partition-scoped batches.",
+      "Validate per partition (counts, checksums, null-rates vs old), then atomic swap via versioned prefix + table location update, keeping the old prefix for rollback."
+    ],
+    "rubric": "Follow-up: what if downstream consumers cache the old partition list? (Bump the table version / refresh metadata as part of the swap step.)",
+    "reference_answer": "(1) partition-scoped Spark job (date partitions, e.g. 30-day batches) writing to a shadow prefix; (2) separate EMR/Glue cluster or job priority queue + off-peak scheduling so prod queries are unaffected; (3) per-partition validation: row counts, checksums vs source, null-rate and distribution diffs against the old partition (Great Expectations / custom); (4) atomic swap: versioned prefix + update the table location or a symlink view — never overwrite in place; (5) keep the old prefix for 1–2 weeks as rollback; (6) idempotent partition writes so failed batches re-run cleanly."
+  },
+  {
+    "seed_id": "DE-03",
+    "track": "de",
+    "title": "The Shuffle Is Killing Us",
+    "difficulty": "intermediate",
+    "topics": ["Spark performance", "skew"],
+    "schema_sql": null,
+    "statement": "A Spark join between a 2 TB fact table and a 40 GB dimension table takes 4 hours; the stage has a handful of tasks running 10x longer than the rest. Diagnose and fix.",
+    "hints": [
+      "A few long-running tasks in a join stage is the classic signature of data skew on the join key.",
+      "Confirm with df.groupBy(key).count() — look for hot keys.",
+      "Fixes: broadcast the smaller side, salt hot keys, split the join (hot keys separately), or pre-aggregate before joining. Also check for duplicate keys in the dimension causing a partial cartesian."
+    ],
+    "rubric": "Follow-up: how do you prevent it recurring? (DQ check on dimension key uniqueness in the pipeline, Spark UI/adaptive query execution monitoring.)",
+    "reference_answer": "Classic skew on the join key. Fixes: (1) confirm with `df.groupBy(key).count()` — a few hot keys; (2) if the dimension side is skewed and small enough, broadcast it (broadcast join threshold); (3) salting: add a random salt to hot keys on both sides, aggregate, then join back; (4) split the join — handle hot keys separately from the rest; (5) pre-aggregate before joining when only aggregates are needed; (6) check for unintended cartesian from duplicate keys in the dimension (unique constraint violation is the sneaky cause)."
+  },
+  {
+    "seed_id": "DE-04",
+    "track": "de",
+    "title": "Late-Arriving Dimensions",
+    "difficulty": "intermediate",
+    "topics": ["dimensional modeling", "SCD"],
+    "schema_sql": null,
+    "statement": "Orders reference products, but product dimension records sometimes arrive a day after the order facts. If you join naively, those orders show NULL product attributes. How do you model this so reports stay correct?",
+    "hints": [
+      "The problem is time-variance: the fact needs the dimension as it was at order time.",
+      "SCD Type 2 with effective_from/effective_to and a surrogate key; join the fact on the surrogate valid at order time.",
+      "Backfill the surrogate when the late row arrives (targeted key-repair MERGE), keep an 'unknown' placeholder row so joins never drop rows, and alert on late-arrival SLA breaches."
+    ],
+    "rubric": "Follow-up: what breaks if you just re-run the fact load daily to fix keys? (Full recompute cost; prefer targeted key-repair MERGE on affected partitions.)",
+    "reference_answer": "(1) SCD Type 2 on the product dimension with effective_from / effective_to and a surrogate key; (2) fact table joins on the surrogate key valid at order time — backfill the surrogate key when the late dimension row arrives (reprocess or a repair job); (3) alternative: keep an 'unknown' dimension row (surrogate key 0/-1) as placeholder so joins never drop rows; (4) late-arrival SLA alert — dimension landing > N hours after fact triggers the repair pass; (5) never use the natural key directly in the fact join for time-variant attributes."
+  },
+  {
+    "seed_id": "DE-05",
+    "track": "de",
+    "title": "Airflow DAG That Won't Die Quietly",
+    "difficulty": "intermediate",
+    "topics": ["orchestration", "retries", "SLAs"],
+    "schema_sql": null,
+    "statement": "Your Airflow DAG runs 6 tasks: extract → validate → transform → quality-check → load → notify. The transform task fails intermittently on memory. Design the DAG's resilience: retries, alerts, and partial-rerun behavior.",
+    "hints": [
+      "Retries with exponential backoff on the flaky task; page only on repeated failures to avoid alert fatigue.",
+      "Make the data-quality check a hard gate before load, and keep every task idempotent so clearing transform re-runs just transform + downstream.",
+      "Set catchup=False and max_active_runs=1; put an SLA on extract so a late vendor feed warns before downstream starves."
+    ],
+    "rubric": "Follow-up: the memory failure happens only on month-end partitions — better fix? (Dynamic task sizing / partition-aware resource requests, not blanket bigger workers.)",
+    "reference_answer": "(1) retries=3 with exponential_backoff on transform, plus a separate on_failure_callback paging only for repeated failures (avoid alert fatigue); (2) SLA on extract — if the vendor feed is late, the DAG should warn before downstream starves; (3) task-level idempotency so `clear`-ing transform re-runs only transform and downstream; (4) data-quality check as a hard gate before load (fail → stop, alert, no partial load); (5) catchup=False and max_active_runs=1 to avoid pileups; (6) retries logged with context (attempt number, host, memory profile)."
+  },
+  {
+    "seed_id": "DE-06",
+    "track": "de",
+    "title": "Schema Evolution Gone Wrong",
+    "difficulty": "intermediate",
+    "topics": ["schema evolution", "Parquet", "catalog"],
+    "schema_sql": null,
+    "statement": "An upstream team added a column and changed an existing column from INT to BIGINT in the JSON they send you. Your Glue-crawled table now shows duplicate columns (`amount` and `amount_1`) and downstream queries break. What happened, and how do you fix it forward and backward?",
+    "hints": [
+      "The crawler inferred a new schema version per file; INT vs BIGINT conflicted and the new column got suffixed.",
+      "Forward fix: stop relying on the crawler here — define an explicit table schema (BIGINT + new column) with explicit type-widening rules.",
+      "Backward fix: rewrite affected partitions casting to the canonical schema; add a schema-hash DQ gate at land time and require upstream payload versioning."
+    ],
+    "rubric": "Follow-up: INT→BIGINT is safe widening, but what change is NOT safe? (Narrowing, type family changes like string→timestamp, or renamed semantics.)",
+    "reference_answer": "(1) the crawler created a new schema version — Glue infers types per file, INT vs BIGINT merged into a conflict and the renamed/duplicated column got suffixed; (2) forward fix: stop relying on the crawler for this table — define an explicit schema (Athena DDL / Glue table) with BIGINT and the new column, enable schema merging with explicit type widening rules; (3) historical fix: rewrite affected partitions with a Spark job casting to the canonical schema; (4) contract: require upstream to version their payload (schema_version field) and announce breaking changes; (5) DQ gate: schema-hash check at land time fails fast on unannounced changes."
+  },
+  {
+    "seed_id": "DE-07",
+    "track": "de",
+    "title": "Exactly-Once to the Data Lake",
+    "difficulty": "advanced",
+    "topics": ["streaming", "Kafka", "idempotency"],
+    "schema_sql": null,
+    "statement": "You're moving a Kafka topic (order events, keyed by order_id) into S3/Parquet via a streaming consumer with hourly micro-batches. The business requires exactly-once semantics in the lake. How?",
+    "hints": [
+      "Kafka transactions cover the broker, not your S3 writes — the sink side is where duplicates sneak in.",
+      "Make writes deterministic: output paths keyed by (topic_partition, offset_range) so a retried batch writes the same files.",
+      "Commit atomically: stage files, register the partition in the catalog only on success, checkpoint offsets in the same transaction; dedupe on order_id within the batch."
+    ],
+    "rubric": "Follow-up: why not just rely on Kafka transactions alone? (They cover the broker, not your S3 writes — the sink side is where duplicates sneak in.)",
+    "reference_answer": "(1) deterministic output paths keyed by (topic_partition, offset_range) so a retried batch writes the same files; (2) transactional commit: write files to a staging prefix, then atomically register the partition in the catalog only on success (commit offsets after); (3) consumer-side dedupe on order_id within the batch + MERGE semantics downstream for cross-batch duplicates; (4) checkpoint offsets in the same transaction as the file commit (or use a transactional sink like Spark structured streaming's foreachBatch with idempotent writes); (5) monitor consumer lag and duplicate-write rate as the canary."
+  },
+  {
+    "seed_id": "DE-08",
+    "track": "de",
+    "title": "Design: Clickstream to Feature Store",
+    "difficulty": "advanced",
+    "topics": ["system design", "streaming + batch", "feature engineering"],
+    "schema_sql": null,
+    "statement": "Design a pipeline that turns raw website clickstream events into ML-ready user features (e.g., 7-day click counts, session stats) refreshed hourly, serving both batch training and low-latency online inference. Constraints: ~100M events/day, backfill must be possible, features must be point-in-time correct.",
+    "hints": [
+      "Split the path: append-only event lake (S3, hourly partitions) from a stream processor, then an hourly batch job computing features.",
+      "Point-in-time correctness means as-of joins on event time: the feature value as known at time T.",
+      "Write the same computed batch to both the offline store (S3/Parquet) and online store (DynamoDB/Redis) — no training/serving skew; backfill = re-run the batch job over historical partitions."
+    ],
+    "rubric": "Follow-up: online inference needs sub-50ms — what changes? (Precompute per-user feature vectors, keep the online store keyed by user_id, stream updates for the freshest features only.)",
+    "reference_answer": "(1) raw events → Kafka → stream processor (Flink/Spark Structured Streaming) → append-only event lake (S3, hourly partitions); (2) hourly batch job computes features with event-time windows and as-of joins (point-in-time correctness: feature value as known at time T); (3) dual-write to offline store (S3/Parquet for training) and online store (DynamoDB/Redis for inference) from the same computed batch — no training/serving skew; (4) backfill = re-run the batch job over historical partitions with the same code path; (5) feature metadata registry (definitions, owners, SLAs); (6) DQ: event-volume anomaly detection at ingest, null-rate checks on features, and a training/serving consistency sample check."
+  }
+]
