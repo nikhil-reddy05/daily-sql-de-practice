@@ -15,17 +15,17 @@ A daily practice app for data engineers: every day you get **2 SQL problems + 2 
 ![AI coach review with score and feedback](docs/screenshots/coach-review.png)
 *Coach review: score, what worked, and what to tighten next.*
 
-![Progress view flagging weak topics for drilling](docs/screenshots/progress-drill.png)
-*Progress: weak topics flagged as drills after a low-scoring round.*
-
 ![Improved answer and next round](docs/screenshots/improved-answer.png)
 *Improved answer plus a pointer to the next unfinished round.*
 
-![Progress view — adaptive path and topic scores](docs/screenshots/progress.png)
-*Progress: adaptive path, topic strengths and drills, and your practice log.*
+![Progress view flagging weak topics for drilling](docs/screenshots/progress-drill.png)
+*Progress: weak topics flagged as drills after a low-scoring round.*
 
 ![Revised answer with a strong coach review](docs/screenshots/revised-answer.png)
 *Revised answer earning a strong coach review.*
+
+![Progress view — adaptive path and topic scores](docs/screenshots/progress.png)
+*Progress: adaptive path, topic strengths and drills, and your practice log.*
 
 ## Quickstart
 
