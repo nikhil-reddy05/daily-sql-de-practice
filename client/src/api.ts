@@ -39,6 +39,13 @@ export interface AuthMe {
   user: { id: number; name: string | null; email: string | null; picture: string | null } | null;
 }
 
+export interface PracticeSettings {
+  sql_enabled: boolean;
+  de_enabled: boolean;
+  sql_count: number;
+  de_count: number;
+}
+
 export interface AiStatus {
   configured: boolean;
   provider: string | null;
@@ -78,6 +85,7 @@ export const api = {
   progress: () =>
     req<{
       streak: number;
+      settings: PracticeSettings;
       recommended: {
         sql: { difficulty: string; average: number | null };
         de: { difficulty: string; average: number | null };
@@ -93,6 +101,9 @@ export const api = {
     ),
   aiStatus: () => req<AiStatus>('/api/ai/status'),
   aiTest: () => req<{ ok: boolean; message: string }>('/api/ai/test', { method: 'POST' }),
+  settings: () => req<PracticeSettings>('/api/settings'),
+  updateSettings: (s: PracticeSettings) =>
+    req<PracticeSettings>('/api/settings', { method: 'PUT', body: JSON.stringify(s) }),
   authMe: () => req<AuthMe>('/api/auth/me'),
   logout: () => req<{ ok: boolean }>('/api/auth/logout', { method: 'POST' }),
 };

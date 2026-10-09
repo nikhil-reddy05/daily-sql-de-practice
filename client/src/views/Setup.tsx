@@ -1,11 +1,75 @@
 import { useEffect, useState } from 'react';
-import { api, type AiStatus } from '../api';
+import { api, type AiStatus, type PracticeSettings } from '../api';
+
+function TrackRow({
+  label,
+  hint,
+  enabled,
+  count,
+  saving,
+  onToggle,
+  onCount,
+}: {
+  label: string;
+  hint: string;
+  enabled: boolean;
+  count: number;
+  saving: boolean;
+  onToggle: () => void;
+  onCount: (n: number) => void;
+}) {
+  return (
+    <div className="setting-row">
+      <div>
+        <div>
+          <strong>{label}</strong>
+        </div>
+        <div className="muted">{hint}</div>
+      </div>
+      <div className="setting-controls">
+        <div className="stepper" aria-disabled={!enabled}>
+          <button
+            className="btn ghost small"
+            disabled={saving || !enabled || count <= 0}
+            onClick={() => onCount(count - 1)}
+            aria-label={`Fewer ${label} questions`}
+          >
+            −
+          </button>
+          <span className="val">{enabled ? `${count}/day` : 'off'}</span>
+          <button
+            className="btn ghost small"
+            disabled={saving || !enabled || count >= 10}
+            onClick={() => onCount(count + 1)}
+            aria-label={`More ${label} questions`}
+          >
+            +
+          </button>
+        </div>
+        <button
+          role="switch"
+          aria-checked={enabled}
+          aria-label={`Toggle ${label}`}
+          className={`toggle${enabled ? ' on' : ''}`}
+          disabled={saving}
+          onClick={onToggle}
+        >
+          <span className="knob" />
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function Setup({ onAuthChange }: { onAuthChange: () => void }) {
   const [status, setStatus] = useState<AiStatus | null>(null);
   const [test, setTest] = useState<{ ok: boolean; message: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [settings, setSettings] = useState<PracticeSettings | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [regenBusy, setRegenBusy] = useState(false);
+  const [regenMsg, setRegenMsg] = useState<string | null>(null);
 
   function refresh() {
     api
@@ -18,6 +82,37 @@ export default function Setup({ onAuthChange }: { onAuthChange: () => void }) {
   }
 
   useEffect(refresh, []);
+  useEffect(() => {
+    api.settings().then(setSettings).catch((e) => setError(e.message));
+  }, []);
+
+  async function saveSettings(next: PracticeSettings) {
+    const prev = settings;
+    setSettings(next); // optimistic
+    setSaving(true);
+    setError(null);
+    try {
+      setSettings(await api.updateSettings(next));
+    } catch (e: any) {
+      setError(e.message);
+      if (prev) setSettings(prev); // revert on validation failure
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function regenNow() {
+    setRegenBusy(true);
+    setRegenMsg(null);
+    try {
+      await api.regenerate();
+      setRegenMsg("Today's set was regenerated with your current settings.");
+    } catch (e: any) {
+      setRegenMsg(e.message);
+    } finally {
+      setRegenBusy(false);
+    }
+  }
 
   async function runTest() {
     setBusy(true);
@@ -35,6 +130,47 @@ export default function Setup({ onAuthChange }: { onAuthChange: () => void }) {
 
   return (
     <div>
+      <div className="card">
+        <h2>Practice settings</h2>
+        {settings ? (
+          <>
+            <TrackRow
+              label="SQL"
+              hint="PostgreSQL query problems"
+              enabled={settings.sql_enabled}
+              count={settings.sql_count}
+              saving={saving}
+              onToggle={() => saveSettings({ ...settings, sql_enabled: !settings.sql_enabled })}
+              onCount={(n) => saveSettings({ ...settings, sql_count: n })}
+            />
+            <TrackRow
+              label="Data engineering"
+              hint="Pipeline / Spark / Airflow scenarios"
+              enabled={settings.de_enabled}
+              count={settings.de_count}
+              saving={saving}
+              onToggle={() => saveSettings({ ...settings, de_enabled: !settings.de_enabled })}
+              onCount={(n) => saveSettings({ ...settings, de_count: n })}
+            />
+            <p className="muted">
+              Changes apply from tomorrow&apos;s set. Use the button below to apply them to
+              today&apos;s set right now.
+            </p>
+            <button className="btn ghost" onClick={regenNow} disabled={regenBusy}>
+              {regenBusy ? 'Regenerating…' : "Regenerate today's set"}
+            </button>
+            {regenMsg && (
+              <div className="muted" style={{ marginTop: 8 }}>
+                {regenMsg}
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="muted">Loading settings…</div>
+        )}
+        {error && <div className="error">{error}</div>}
+      </div>
+
       <div className="card">
         <h2>Option 1 — Sign in with ChatGPT (recommended)</h2>
         <p className="muted">

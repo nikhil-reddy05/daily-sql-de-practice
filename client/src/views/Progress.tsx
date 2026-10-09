@@ -24,15 +24,29 @@ export default function Progress() {
         <div className="card">
           <div className="muted">Recommended difficulty</div>
           <div>
-            SQL: <strong>{p.recommended.sql.difficulty}</strong>
-            {p.recommended.sql.average !== null && (
-              <span className="muted"> (avg {p.recommended.sql.average.toFixed(0)})</span>
+            SQL:{' '}
+            {p.settings.sql_enabled ? (
+              <>
+                <strong>{p.recommended.sql.difficulty}</strong>
+                {p.recommended.sql.average !== null && (
+                  <span className="muted"> (avg {p.recommended.sql.average.toFixed(0)})</span>
+                )}
+              </>
+            ) : (
+              <span className="muted">disabled</span>
             )}
           </div>
           <div>
-            Data Eng: <strong>{p.recommended.de.difficulty}</strong>
-            {p.recommended.de.average !== null && (
-              <span className="muted"> (avg {p.recommended.de.average.toFixed(0)})</span>
+            Data Eng:{' '}
+            {p.settings.de_enabled ? (
+              <>
+                <strong>{p.recommended.de.difficulty}</strong>
+                {p.recommended.de.average !== null && (
+                  <span className="muted"> (avg {p.recommended.de.average.toFixed(0)})</span>
+                )}
+              </>
+            ) : (
+              <span className="muted">disabled</span>
             )}
           </div>
         </div>

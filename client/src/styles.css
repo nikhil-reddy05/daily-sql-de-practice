@@ -114,3 +114,25 @@ table.stats th { color: var(--muted); font-weight: 600; }
 .row { display: flex; gap: 16px; flex-wrap: wrap; }
 .row .card { flex: 1; min-width: 240px; }
 .big { font-size: 1.4rem; font-weight: 700; }
+
+.setting-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border);
+}
+.setting-controls { display: flex; align-items: center; gap: 12px; }
+.stepper { display: flex; align-items: center; gap: 8px; }
+.stepper .btn { margin-top: 0; min-width: 34px; }
+.stepper .val { min-width: 58px; text-align: center; font-weight: 700; }
+.stepper[aria-disabled="true"] { opacity: 0.35; }
+.toggle {
+  position: relative; width: 48px; height: 28px; border-radius: 999px;
+  border: 1px solid var(--border); background: #0b1020; cursor: pointer; padding: 0;
+  flex-shrink: 0;
+}
+.toggle:disabled { cursor: default; opacity: 0.6; }
+.toggle .knob {
+  position: absolute; top: 3px; left: 3px; width: 20px; height: 20px;
+  border-radius: 50%; background: var(--muted); transition: left 0.15s, background 0.15s;
+}
+.toggle.on { background: #12325e; border-color: var(--accent); }
+.toggle.on .knob { left: 23px; background: var(--accent); }

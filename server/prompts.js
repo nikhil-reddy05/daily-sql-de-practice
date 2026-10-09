@@ -2,7 +2,11 @@
 
 const DIFFICULTIES = ['foundation', 'intermediate', 'advanced'];
 
-export function buildGenerationPrompt({ mix, weakTopics, avoidTitles }) {
+export function buildGenerationPrompt({ mix, weakTopics, avoidTitles, counts = { sql: 2, de: 2 } }) {
+  const total = counts.sql + counts.de;
+  const parts = [];
+  if (counts.sql > 0) parts.push(`${counts.sql} SQL`);
+  if (counts.de > 0) parts.push(`${counts.de} data-engineering scenario`);
   const weak =
     weakTopics.length > 0
       ? `The user is weak on these topics (average score < 60 over 2+ attempts) — make sure at least one question drills each: ${weakTopics
@@ -13,13 +17,25 @@ export function buildGenerationPrompt({ mix, weakTopics, avoidTitles }) {
     avoidTitles.length > 0
       ? `Do NOT reuse these recent titles/scenarios (rephrase-free zone): ${avoidTitles.join(' | ')}.`
       : '';
+  const mixLine =
+    [
+      counts.sql > 0
+        ? `- SQL: ${counts.sql} problem(s) at difficulties: ${mix.sql.join(', ')}.`
+        : null,
+      counts.de > 0
+        ? `- Data engineering: ${counts.de} problem(s) at difficulties: ${mix.de.join(', ')}.`
+        : null,
+    ]
+      .filter(Boolean)
+      .join('\n');
 
-  return `You are an expert data-engineering interview coach. Create exactly 4 ORIGINAL practice problems: 2 SQL and 2 data-engineering scenarios.
+  return `You are an expert data-engineering interview coach. Create exactly ${total} ORIGINAL practice problems: ${parts.join(' and ')}.
 
 Rules:
 - SQL problems target PostgreSQL 15 syntax. Data-engineering problems are scenario/design questions (pipelines, Spark, Airflow, modeling, streaming, data quality).
 - Use original wording. Do NOT copy recognizable HackerRank or LeetCode problems.
-- Difficulty mix — SQL: one "${mix.sql[0]}" and one "${mix.sql[1]}" problem. Data engineering: one "${mix.de[0]}" and one "${mix.de[1]}" problem.
+- Difficulty mix:
+${mixLine}
 - ${weak}
 - ${avoid}
 - Each SQL problem needs a small schema_sql (table definitions).
@@ -28,23 +44,14 @@ Rules:
 
 Respond with valid JSON only, exactly this shape:
 {
-  "sql": [
-    {"title": "...", "difficulty": "foundation|intermediate|advanced", "topics": ["..."],
-     "statement": "...", "schema_sql": "...", "hints": ["...", "...", "..."],
-     "rubric": "...", "reference_answer": "..."},
-    {"title": "...", "difficulty": "foundation|intermediate|advanced", "topics": ["..."],
-     "statement": "...", "schema_sql": "...", "hints": ["...", "...", "..."],
-     "rubric": "...", "reference_answer": "..."}
-  ],
-  "de": [
-    {"title": "...", "difficulty": "foundation|intermediate|advanced", "topics": ["..."],
-     "statement": "...", "hints": ["...", "...", "..."],
-     "rubric": "...", "reference_answer": "..."},
-    {"title": "...", "difficulty": "foundation|intermediate|advanced", "topics": ["..."],
-     "statement": "...", "hints": ["...", "...", "..."],
-     "rubric": "...", "reference_answer": "..."}
-  ]
-}`;
+  "sql": [ exactly ${counts.sql} SQL problem object(s) ],
+  "de": [ exactly ${counts.de} data-engineering problem object(s) ]
+}
+SQL problem object:
+{"title": "...", "difficulty": "foundation|intermediate|advanced", "topics": ["..."],
+ "statement": "...", "schema_sql": "...", "hints": ["...", "...", "..."],
+ "rubric": "...", "reference_answer": "..."}
+Data-engineering problem object: same shape but WITHOUT "schema_sql".`;
 }
 
 function isNonEmptyString(v) {
@@ -81,11 +88,13 @@ function validateProblem(p, track) {
 }
 
 // Strictly validate the generation payload; throws on any shape problem.
-export function validateGeneration(obj) {
+// counts = { sql: n, de: n } — each track must contain exactly n problems.
+export function validateGeneration(obj, counts = { sql: 2, de: 2 }) {
   if (typeof obj !== 'object' || obj === null) throw new Error('Generation payload is not an object');
   for (const track of ['sql', 'de']) {
-    if (!Array.isArray(obj[track]) || obj[track].length !== 2) {
-      throw new Error(`Generation payload must contain exactly 2 "${track}" problems`);
+    const want = counts[track] ?? 0;
+    if (!Array.isArray(obj[track]) || obj[track].length !== want) {
+      throw new Error(`Generation payload must contain exactly ${want} "${track}" problem(s)`);
     }
   }
   return {

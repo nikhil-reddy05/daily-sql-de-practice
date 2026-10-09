@@ -8,27 +8,27 @@ const bank = JSON.parse(readFileSync(join(here, '..', 'data', 'seed-bank.json'),
 const sqlBank = bank.filter((e) => e.track === 'sql');
 const deBank = bank.filter((e) => e.track === 'de');
 
-// 4 rotating day-sets of 2 SQL + 2 DE, in bank order.
-const SETS = [
-  { sql: [0, 1], de: [0, 1] },
-  { sql: [2, 3], de: [2, 3] },
-  { sql: [4, 5], de: [4, 5] },
-  { sql: [6, 7], de: [6, 7] },
-];
+export const SEED_BANK_SIZES = { sql: sqlBank.length, de: deBank.length };
 
-const EPOCH = '2026-10-08';
-
-function daysSinceEpoch(dateKey) {
-  const ms = Date.parse(dateKey + 'T00:00:00Z') - Date.parse(EPOCH + 'T00:00:00Z');
-  return Math.floor(ms / 86400000);
+export function seedTitles() {
+  return bank.map((e) => e.title);
 }
 
-export function seedSetFor(dateKey) {
-  const idx = ((daysSinceEpoch(dateKey) % SETS.length) + SETS.length) % SETS.length;
-  const set = SETS[idx];
+function pick(bankArr, n, offset) {
+  const out = [];
+  if (bankArr.length === 0) return out;
+  for (let i = 0; i < n; i++) out.push(bankArr[(offset + i) % bankArr.length]);
+  return out;
+}
+
+// Build a seed set for a date: counts = { sql: n, de: n } problems per track,
+// offsets = { sql, de } rotation offsets (persisted by the caller) so that
+// consecutive seed-generated days don't repeat problems when counts wrap
+// around the bank.
+export function seedSetFor(dateKey, counts = { sql: 2, de: 2 }, offsets = { sql: 0, de: 0 }) {
   const problems = [
-    ...set.sql.map((i) => sqlBank[i]),
-    ...set.de.map((i) => deBank[i]),
+    ...pick(sqlBank, counts.sql, offsets.sql),
+    ...pick(deBank, counts.de, offsets.de),
   ];
   return problems.map((p, ordinal) => ({
     date_key: dateKey,

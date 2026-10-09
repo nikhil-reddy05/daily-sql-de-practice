@@ -31,8 +31,16 @@ export function recommendedDifficulty(track) {
 // Difficulty mix for a 2-problem set: [recommended, one notch harder].
 // With no history this yields [foundation, intermediate] — the default.
 export function difficultyMix(track) {
+  return difficultyMixN(track, 2);
+}
+
+// Difficulty mix for an N-problem set: [recommended, one notch harder, recommended, ...].
+// n = 0 → []. A track with no questions is simply skipped by callers.
+export function difficultyMixN(track, n) {
   const rec = recommendedDifficulty(track);
-  return [rec, bump(rec)];
+  const out = [];
+  for (let i = 0; i < n; i++) out.push(i % 2 === 0 ? rec : bump(rec));
+  return out;
 }
 
 // Topics with avg < 60 over 2+ attempts — the generation prompt drills these.

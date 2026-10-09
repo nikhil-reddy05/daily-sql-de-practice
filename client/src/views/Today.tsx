@@ -149,7 +149,14 @@ export default function Today() {
   }, []);
 
   async function regenerate() {
-    if (regenBusy || !confirm('Replace today\u2019s set with a freshly generated one? Your attempts on the current set will be discarded.')) return;
+    if (regenBusy || !set) return;
+    if (set.challenges.some((c) => c.attempts.length > 0)) {
+      setError(
+        "Today's set already has attempts — it can't be regenerated. New settings apply from tomorrow's set."
+      );
+      return;
+    }
+    if (!confirm('Replace today\u2019s set with a freshly generated one using your current settings?')) return;
     setRegenBusy(true);
     try {
       setSet(await api.regenerate());
@@ -185,7 +192,7 @@ export default function Today() {
         </div>
       )}
       <div className="muted">
-        {set.date_key} · {done}/4 attempted · source: {set.source === 'ai' ? 'AI-generated' : 'seed bank'}
+        {set.date_key} · {done}/{set.challenges.length} attempted · source: {set.source === 'seed' ? 'seed bank' : 'AI-generated'}
         <button className="btn ghost" style={{ marginLeft: 12, padding: '6px 12px' }} onClick={regenerate} disabled={regenBusy}>
           {regenBusy ? 'Regenerating…' : 'Regenerate set'}
         </button>

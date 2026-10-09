@@ -12,14 +12,21 @@ import {
   validateReview,
 } from './prompts.js';
 import {
-  difficultyMix,
+  difficultyMixN,
   recommendedDifficulty,
   weakTopics,
   recentTitles,
   topicTable,
   trackAverage,
 } from './adaptive.js';
-import { seedSetFor } from './seed.js';
+import { seedSetFor, seedTitles, SEED_BANK_SIZES } from './seed.js';
+import {
+  getSettings,
+  validateSettingsUpdate,
+  updateSettings,
+  getSeedOffsets,
+  setSeedOffsets,
+} from './settings.js';
 import {
   buildAuthorizeUrl,
   handleCallback,
@@ -156,11 +163,19 @@ async function aiCompleteJson(prompt, req) {
 }
 
 async function generateWithAI(dateKey, req) {
-  const mix = { sql: difficultyMix('sql'), de: difficultyMix('de') };
+  const s = getSettings();
+  const counts = { sql: s.sqlCount, de: s.deCount };
+  if (counts.sql + counts.de < 1) throw new Error('No questions enabled in settings');
+  const mix = { sql: difficultyMixN('sql', counts.sql), de: difficultyMixN('de', counts.de) };
+  // Only drill weak topics on tracks that are actually enabled.
+  const weak = weakTopics().filter((w) =>
+    w.track === 'sql' ? s.sql_enabled : s.de_enabled
+  );
   const prompt = buildGenerationPrompt({
     mix,
-    weakTopics: weakTopics(),
+    weakTopics: weak,
     avoidTitles: recentTitles(20),
+    counts,
   });
   let lastErr = null;
   let planNotice;
@@ -173,13 +188,15 @@ async function generateWithAI(dateKey, req) {
       break;
     }
     try {
-      const validated = validateGeneration(r.data);
+      const validated = validateGeneration(r.data, counts);
       const problems = [
         ...validated.sql.map((p) => ({ ...p, track: 'sql' })),
         ...validated.de.map((p) => ({ ...p, track: 'de' })),
       ];
       problems.forEach((p, ordinal) => insertChallenge({ ...p, date_key: dateKey, ordinal }));
-      return { source: r.via === 'plan' ? 'ai-plan' : 'ai-key', planNotice };
+      const src = r.via === 'plan' ? 'ai-plan' : 'ai-key';
+      recordDaySource(dateKey, src);
+      return { source: src, planNotice };
     } catch (err) {
       lastErr = err;
     }
@@ -188,7 +205,17 @@ async function generateWithAI(dateKey, req) {
 }
 
 function generateFromSeed(dateKey) {
-  seedSetFor(dateKey).forEach((c) => insertChallenge(c));
+  const s = getSettings();
+  const counts = { sql: s.sqlCount, de: s.deCount };
+  const offsets = getSeedOffsets();
+  seedSetFor(dateKey, counts, offsets).forEach((c) => insertChallenge(c));
+  // Advance the rotation offsets so the next seed-generated day continues
+  // where this one left off instead of repeating problems.
+  setSeedOffsets({
+    sql: (offsets.sql + counts.sql) % Math.max(1, SEED_BANK_SIZES.sql),
+    de: (offsets.de + counts.de) % Math.max(1, SEED_BANK_SIZES.de),
+  });
+  recordDaySource(dateKey, 'seed');
   return 'seed';
 }
 
@@ -210,11 +237,22 @@ async function ensureToday(dateKey, req) {
   return { challenges: getDay(dateKey), source, planNotice };
 }
 
+function recordDaySource(dateKey, source) {
+  db.prepare(
+    `INSERT INTO day_sources (date_key, source) VALUES (?, ?)
+     ON CONFLICT(date_key) DO UPDATE SET source = excluded.source`
+  ).run(dateKey, source);
+}
+
 function detectSource(dateKey) {
-  const rows = db.prepare(`SELECT title FROM challenges WHERE date_key = ? ORDER BY ordinal`).all(dateKey);
-  if (rows.length !== 4) return 'ai';
-  const seedTitles = seedSetFor(dateKey).map((c) => c.title);
-  return rows.every((r, i) => r.title === seedTitles[i]) ? 'seed' : 'ai';
+  const row = db.prepare(`SELECT source FROM day_sources WHERE date_key = ?`).get(dateKey);
+  if (row) return row.source;
+  // Legacy fallback for sets generated before source tracking: if every
+  // title comes from the seed bank, call it 'seed'.
+  const rows = db.prepare(`SELECT title FROM challenges WHERE date_key = ?`).all(dateKey);
+  if (rows.length === 0) return 'seed';
+  const seed = new Set(seedTitles());
+  return rows.every((r) => seed.has(r.title)) ? 'seed' : 'ai';
 }
 
 function refreshPracticeDay(dateKey) {
@@ -304,6 +342,31 @@ app.post('/api/ai/test', async (req, res) => {
   res.json(await testConnection());
 });
 
+// ---- Practice settings ----
+
+app.get('/api/settings', (req, res) => {
+  const s = getSettings();
+  res.json({
+    sql_enabled: s.sql_enabled,
+    de_enabled: s.de_enabled,
+    sql_count: s.sql_count,
+    de_count: s.de_count,
+  });
+});
+
+app.put('/api/settings', (req, res) => {
+  const v = validateSettingsUpdate(req.body || {});
+  if (!v.ok) return res.status(400).json({ error: v.error });
+  updateSettings(v.settings);
+  const s = getSettings();
+  res.json({
+    sql_enabled: s.sql_enabled,
+    de_enabled: s.de_enabled,
+    sql_count: s.sql_count,
+    de_count: s.de_count,
+  });
+});
+
 // ---- Daily set ----
 
 app.get('/api/today', async (req, res) => {
@@ -327,6 +390,20 @@ app.get('/api/today', async (req, res) => {
 app.post('/api/today/regenerate', async (req, res) => {
   try {
     const dateKey = localDateKey();
+    // Never wipe work in progress: block regeneration once any attempt exists.
+    const attemptCount = db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM attempts a
+         JOIN challenges c ON c.id = a.challenge_id
+         WHERE c.date_key = ?`
+      )
+      .get(dateKey).n;
+    if (attemptCount > 0) {
+      return res.status(400).json({
+        error:
+          "Today's set already has attempts — it can't be regenerated. Your new settings will apply from tomorrow's set.",
+      });
+    }
     const ids = db.prepare(`SELECT id FROM challenges WHERE date_key = ?`).all(dateKey).map((r) => r.id);
     for (const id of ids) db.prepare(`DELETE FROM attempts WHERE challenge_id = ?`).run(id);
     db.prepare(`DELETE FROM challenges WHERE date_key = ?`).run(dateKey);
@@ -452,6 +529,15 @@ app.get('/api/progress', (req, res) => {
 
   res.json({
     streak,
+    settings: (() => {
+      const s = getSettings();
+      return {
+        sql_enabled: s.sql_enabled,
+        de_enabled: s.de_enabled,
+        sql_count: s.sql_count,
+        de_count: s.de_count,
+      };
+    })(),
     recommended: {
       sql: { difficulty: recommendedDifficulty('sql'), average: trackAverage('sql') },
       de: { difficulty: recommendedDifficulty('de'), average: trackAverage('de') },
