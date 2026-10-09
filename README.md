@@ -4,6 +4,20 @@ A daily practice app for data engineers: every day you get **2 SQL problems + 2 
 
 **Bring your own AI — two ways.** The recommended path is **Sign in with ChatGPT** (official OpenAI DevDay flow): click one button, sign in with your ChatGPT account, and all AI calls run against your own Plus/Pro subscription quota. No API key. Prefer keys? The API-key fallback supports OpenAI, Anthropic, Ollama (free, local), or any OpenAI-compatible endpoint. With neither configured, the app still works: daily sets rotate through a built-in 16-problem seed bank and answers are saved (just without AI reviews).
 
+## Screenshots
+
+![Practice setup — track selection and daily question count](docs/screenshots/practice-setup.png)
+*Practice setup: SQL-only or SQL + data engineering, with selectable questions per day.*
+
+![Problem detail with schema, sample rows, and task](docs/screenshots/problem-detail.png)
+*Problem detail: schema, sample rows, and the exact task.*
+
+![AI coach review with score and feedback](docs/screenshots/coach-review.png)
+*Coach review: score, what worked, and what to tighten next.*
+
+![Improved answer and next round](docs/screenshots/improved-answer.png)
+*Improved answer plus a pointer to the next unfinished round.*
+
 ## Quickstart
 
 Requires Node 20+.
