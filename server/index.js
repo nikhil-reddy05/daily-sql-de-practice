@@ -176,6 +176,7 @@ async function generateWithAI(dateKey, req) {
     weakTopics: weak,
     avoidTitles: recentTitles(20),
     counts,
+    dialect: s.sql_dialect,
   });
   let lastErr = null;
   let planNotice;
@@ -351,6 +352,7 @@ app.get('/api/settings', (req, res) => {
     de_enabled: s.de_enabled,
     sql_count: s.sql_count,
     de_count: s.de_count,
+    sql_dialect: s.sql_dialect,
   });
 });
 
@@ -364,6 +366,7 @@ app.put('/api/settings', (req, res) => {
     de_enabled: s.de_enabled,
     sql_count: s.sql_count,
     de_count: s.de_count,
+    sql_dialect: s.sql_dialect,
   });
 });
 
@@ -536,6 +539,7 @@ app.get('/api/progress', (req, res) => {
         de_enabled: s.de_enabled,
         sql_count: s.sql_count,
         de_count: s.de_count,
+        sql_dialect: s.sql_dialect,
       };
     })(),
     recommended: {

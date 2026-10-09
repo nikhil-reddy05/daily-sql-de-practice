@@ -44,7 +44,17 @@ export interface PracticeSettings {
   de_enabled: boolean;
   sql_count: number;
   de_count: number;
+  sql_dialect: string;
 }
+
+export const SQL_DIALECTS = [
+  'PostgreSQL 15',
+  'MySQL 8',
+  'SQL Server (T-SQL)',
+  'Snowflake',
+  'Google BigQuery',
+  'SQLite',
+];
 
 export interface AiStatus {
   configured: boolean;

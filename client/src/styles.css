@@ -120,6 +120,11 @@ table.stats th { color: var(--muted); font-weight: 600; }
   gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border);
 }
 .setting-controls { display: flex; align-items: center; gap: 12px; }
+.select {
+  background: #0b1020; color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 12px; font-size: 0.95rem; max-width: 100%;
+}
+.select:disabled { opacity: 0.5; cursor: default; }
 .stepper { display: flex; align-items: center; gap: 8px; }
 .stepper .btn { margin-top: 0; min-width: 34px; }
 .stepper .val { min-width: 58px; text-align: center; font-weight: 700; }

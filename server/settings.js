@@ -8,9 +8,21 @@ const DEFAULTS = {
   de_enabled: '1',
   sql_count: '2',
   de_count: '2',
+  sql_dialect: 'PostgreSQL 15',
   seed_offset_sql: '0',
   seed_offset_de: '0',
 };
+
+// SQL dialects the AI generator may target. The seed-bank fallback is
+// PostgreSQL-flavored regardless of this setting.
+export const SQL_DIALECTS = [
+  'PostgreSQL 15',
+  'MySQL 8',
+  'SQL Server (T-SQL)',
+  'Snowflake',
+  'Google BigQuery',
+  'SQLite',
+];
 
 function rawGet(key) {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
@@ -41,11 +53,14 @@ export function getSettings() {
   const de_enabled = toBool(rawGet('de_enabled'));
   const sql_count = toInt(rawGet('sql_count'), 2);
   const de_count = toInt(rawGet('de_count'), 2);
+  const rawDialect = rawGet('sql_dialect');
+  const sql_dialect = SQL_DIALECTS.includes(rawDialect) ? rawDialect : DEFAULTS.sql_dialect;
   return {
     sql_enabled,
     de_enabled,
     sql_count,
     de_count,
+    sql_dialect,
     sqlCount: sql_enabled ? sql_count : 0,
     deCount: de_enabled ? de_count : 0,
   };
@@ -73,12 +88,21 @@ export function validateSettingsUpdate(body) {
   const de_enabled = parseBoolField(body.de_enabled);
   const sql_count = parseCountField(body.sql_count);
   const de_count = parseCountField(body.de_count);
+  const sql_dialect =
+    typeof body.sql_dialect === 'string' && SQL_DIALECTS.includes(body.sql_dialect)
+      ? body.sql_dialect
+      : undefined;
   if (sql_enabled === undefined) return { ok: false, error: 'sql_enabled must be a boolean' };
   if (de_enabled === undefined) return { ok: false, error: 'de_enabled must be a boolean' };
   if (sql_count === undefined)
     return { ok: false, error: 'sql_count must be an integer between 0 and 10' };
   if (de_count === undefined)
     return { ok: false, error: 'de_count must be an integer between 0 and 10' };
+  if (sql_dialect === undefined)
+    return {
+      ok: false,
+      error: `sql_dialect must be one of: ${SQL_DIALECTS.join(', ')}`,
+    };
 
   const effSql = sql_enabled ? sql_count : 0;
   const effDe = de_enabled ? de_count : 0;
@@ -88,7 +112,7 @@ export function validateSettingsUpdate(body) {
       error: 'At least one track must be enabled with at least 1 question per day',
     };
   }
-  return { ok: true, settings: { sql_enabled, de_enabled, sql_count, de_count } };
+  return { ok: true, settings: { sql_enabled, de_enabled, sql_count, de_count, sql_dialect } };
 }
 
 export function updateSettings(s) {
@@ -96,6 +120,7 @@ export function updateSettings(s) {
   rawSet('de_enabled', s.de_enabled ? '1' : '0');
   rawSet('sql_count', String(s.sql_count));
   rawSet('de_count', String(s.de_count));
+  rawSet('sql_dialect', s.sql_dialect);
 }
 
 // Rotation offsets for the seed-bank fallback, so consecutive seed-generated

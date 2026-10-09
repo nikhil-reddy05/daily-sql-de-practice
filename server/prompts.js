@@ -2,7 +2,13 @@
 
 const DIFFICULTIES = ['foundation', 'intermediate', 'advanced'];
 
-export function buildGenerationPrompt({ mix, weakTopics, avoidTitles, counts = { sql: 2, de: 2 } }) {
+export function buildGenerationPrompt({
+  mix,
+  weakTopics,
+  avoidTitles,
+  counts = { sql: 2, de: 2 },
+  dialect = 'PostgreSQL 15',
+}) {
   const total = counts.sql + counts.de;
   const parts = [];
   if (counts.sql > 0) parts.push(`${counts.sql} SQL`);
@@ -32,7 +38,7 @@ export function buildGenerationPrompt({ mix, weakTopics, avoidTitles, counts = {
   return `You are an expert data-engineering interview coach. Create exactly ${total} ORIGINAL practice problems: ${parts.join(' and ')}.
 
 Rules:
-- SQL problems target PostgreSQL 15 syntax. Data-engineering problems are scenario/design questions (pipelines, Spark, Airflow, modeling, streaming, data quality).
+- SQL problems must use ${dialect} syntax ONLY. Use only functions, types, and features valid in ${dialect} — never mix in syntax from other dialects (e.g. no ILIKE or DISTINCT ON for SQL Server; TOP vs LIMIT differences; QUALIFY is Snowflake-only). Data-engineering problems are scenario/design questions (pipelines, Spark, Airflow, modeling, streaming, data quality).
 - Use original wording. Do NOT copy recognizable HackerRank or LeetCode problems.
 - Difficulty mix:
 ${mixLine}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, type AiStatus, type PracticeSettings } from '../api';
+import { api, SQL_DIALECTS, type AiStatus, type PracticeSettings } from '../api';
 
 function TrackRow({
   label,
@@ -136,13 +136,39 @@ export default function Setup({ onAuthChange }: { onAuthChange: () => void }) {
           <>
             <TrackRow
               label="SQL"
-              hint="PostgreSQL query problems"
+              hint={settings.sql_enabled ? `Query problems (${settings.sql_dialect})` : 'Query problems'}
               enabled={settings.sql_enabled}
               count={settings.sql_count}
               saving={saving}
               onToggle={() => saveSettings({ ...settings, sql_enabled: !settings.sql_enabled })}
               onCount={(n) => saveSettings({ ...settings, sql_count: n })}
             />
+            <div className="setting-row" style={settings.sql_enabled ? undefined : { opacity: 0.35 }}>
+              <div>
+                <div>
+                  <strong>SQL dialect</strong>
+                </div>
+              </div>
+              <div className="setting-controls">
+                <select
+                  className="select"
+                  value={settings.sql_dialect}
+                  disabled={saving || !settings.sql_enabled}
+                  onChange={(e) => saveSettings({ ...settings, sql_dialect: e.target.value })}
+                  aria-label="SQL dialect"
+                >
+                  {SQL_DIALECTS.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <p className="muted" style={{ marginTop: 4 }}>
+              Applies to AI-generated questions; the built-in seed bank is
+              PostgreSQL-flavored.
+            </p>
             <TrackRow
               label="Data engineering"
               hint="Pipeline / Spark / Airflow scenarios"

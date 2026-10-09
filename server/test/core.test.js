@@ -65,33 +65,46 @@ test('difficultyMixN: variable-length mixes', () => {
 });
 
 test('validateSettingsUpdate: accepts valid bodies', () => {
-  const ok = validateSettingsUpdate({ sql_enabled: true, de_enabled: true, sql_count: 2, de_count: 2 });
+  const ok = validateSettingsUpdate({ sql_enabled: true, de_enabled: true, sql_count: 2, de_count: 2, sql_dialect: 'PostgreSQL 15' });
   assert.equal(ok.ok, true);
-  assert.deepEqual(ok.settings, { sql_enabled: true, de_enabled: true, sql_count: 2, de_count: 2 });
+  assert.deepEqual(ok.settings, { sql_enabled: true, de_enabled: true, sql_count: 2, de_count: 2, sql_dialect: 'PostgreSQL 15' });
   // SQL-only mode
-  const sqlOnly = validateSettingsUpdate({ sql_enabled: true, de_enabled: false, sql_count: 3, de_count: 0 });
+  const sqlOnly = validateSettingsUpdate({ sql_enabled: true, de_enabled: false, sql_count: 3, de_count: 0, sql_dialect: 'Snowflake' });
   assert.equal(sqlOnly.ok, true);
   // String coercions from form-style bodies
-  const str = validateSettingsUpdate({ sql_enabled: '1', de_enabled: '0', sql_count: '5', de_count: '0' });
+  const str = validateSettingsUpdate({ sql_enabled: '1', de_enabled: '0', sql_count: '5', de_count: '0', sql_dialect: 'MySQL 8' });
   assert.equal(str.ok, true);
-  assert.deepEqual(str.settings, { sql_enabled: true, de_enabled: false, sql_count: 5, de_count: 0 });
+  assert.deepEqual(str.settings, { sql_enabled: true, de_enabled: false, sql_count: 5, de_count: 0, sql_dialect: 'MySQL 8' });
+});
+
+test('validateSettingsUpdate: accepts every whitelisted dialect', () => {
+  for (const d of ['PostgreSQL 15', 'MySQL 8', 'SQL Server (T-SQL)', 'Snowflake', 'Google BigQuery', 'SQLite']) {
+    const r = validateSettingsUpdate({ sql_enabled: true, de_enabled: true, sql_count: 2, de_count: 2, sql_dialect: d });
+    assert.equal(r.ok, true, `dialect ${d} should be accepted`);
+    assert.equal(r.settings.sql_dialect, d);
+  }
 });
 
 test('validateSettingsUpdate: rejects invalid bodies', () => {
-  assert.equal(validateSettingsUpdate({ sql_enabled: true, de_enabled: true, sql_count: 11, de_count: 2 }).ok, false);
-  assert.equal(validateSettingsUpdate({ sql_enabled: true, de_enabled: true, sql_count: -1, de_count: 2 }).ok, false);
-  assert.equal(validateSettingsUpdate({ sql_enabled: true, de_enabled: true, sql_count: 2.5, de_count: 2 }).ok, false);
-  assert.equal(validateSettingsUpdate({ sql_enabled: true, de_enabled: true, sql_count: 'x', de_count: 2 }).ok, false);
+  const base = { sql_dialect: 'PostgreSQL 15' };
+  assert.equal(validateSettingsUpdate({ sql_enabled: true, de_enabled: true, sql_count: 11, de_count: 2, ...base }).ok, false);
+  assert.equal(validateSettingsUpdate({ sql_enabled: true, de_enabled: true, sql_count: -1, de_count: 2, ...base }).ok, false);
+  assert.equal(validateSettingsUpdate({ sql_enabled: true, de_enabled: true, sql_count: 2.5, de_count: 2, ...base }).ok, false);
+  assert.equal(validateSettingsUpdate({ sql_enabled: true, de_enabled: true, sql_count: 'x', de_count: 2, ...base }).ok, false);
   // both tracks disabled
-  assert.equal(validateSettingsUpdate({ sql_enabled: false, de_enabled: false, sql_count: 2, de_count: 2 }).ok, false);
+  assert.equal(validateSettingsUpdate({ sql_enabled: false, de_enabled: false, sql_count: 2, de_count: 2, ...base }).ok, false);
   // both counts zero
-  assert.equal(validateSettingsUpdate({ sql_enabled: true, de_enabled: true, sql_count: 0, de_count: 0 }).ok, false);
+  assert.equal(validateSettingsUpdate({ sql_enabled: true, de_enabled: true, sql_count: 0, de_count: 0, ...base }).ok, false);
   // enabled track with zero count and everything else off
-  assert.equal(validateSettingsUpdate({ sql_enabled: true, de_enabled: false, sql_count: 0, de_count: 0 }).ok, false);
+  assert.equal(validateSettingsUpdate({ sql_enabled: true, de_enabled: false, sql_count: 0, de_count: 0, ...base }).ok, false);
   // missing fields
   assert.equal(validateSettingsUpdate({ sql_enabled: true }).ok, false);
   // not an object
   assert.equal(validateSettingsUpdate(null).ok, false);
+  // unknown dialect
+  assert.equal(validateSettingsUpdate({ sql_enabled: true, de_enabled: true, sql_count: 2, de_count: 2, sql_dialect: 'Oracle 21c' }).ok, false);
+  // missing dialect
+  assert.equal(validateSettingsUpdate({ sql_enabled: true, de_enabled: true, sql_count: 2, de_count: 2 }).ok, false);
 });
 
 test('validateGeneration: enforces per-track counts', () => {
@@ -126,5 +139,20 @@ test('buildGenerationPrompt: requests exact per-track counts', () => {
   assert.ok(p.includes('exactly 3 ORIGINAL'));
   assert.ok(p.includes('"sql": [ exactly 3 SQL problem object(s) ]'));
   assert.ok(p.includes('"de": [ exactly 0 data-engineering problem object(s) ]'));
-  assert.ok(p.includes('PostgreSQL 15'));
+  assert.ok(p.includes('PostgreSQL 15')); // default dialect
+});
+
+test('buildGenerationPrompt: honors the selected dialect', () => {
+  const base = {
+    mix: { sql: ['foundation', 'intermediate'], de: [] },
+    weakTopics: [],
+    avoidTitles: [],
+    counts: { sql: 2, de: 0 },
+  };
+  const snow = buildGenerationPrompt({ ...base, dialect: 'Snowflake' });
+  assert.ok(snow.includes('Snowflake'));
+  assert.ok(snow.includes('Snowflake syntax ONLY'));
+  assert.ok(!snow.includes('PostgreSQL 15'), 'must not hardcode PostgreSQL when another dialect is chosen');
+  const def = buildGenerationPrompt(base);
+  assert.ok(def.includes('PostgreSQL 15 syntax ONLY'));
 });
