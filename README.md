@@ -18,6 +18,12 @@ A daily practice app for data engineers: every day you get **2 SQL problems + 2 
 ![Improved answer and next round](docs/screenshots/improved-answer.png)
 *Improved answer plus a pointer to the next unfinished round.*
 
+![Progress view — adaptive path and topic scores](docs/screenshots/progress.png)
+*Progress: adaptive path, topic strengths and drills, and your practice log.*
+
+![Revised answer with a strong coach review](docs/screenshots/revised-answer.png)
+*Revised answer earning a strong coach review.*
+
 ## Quickstart
 
 Requires Node 20+.
