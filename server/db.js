@@ -4,10 +4,13 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const dataDir = join(here, '..', 'data');
+// Tests set SQL_PRACTICE_DATA_DIR before importing any server modules. It is
+// intentionally environment-only: no HTTP request can choose a database path.
+export const dataDir = process.env.SQL_PRACTICE_DATA_DIR || join(here, '..', 'data');
 mkdirSync(dataDir, { recursive: true });
 
-const db = new DatabaseSync(join(dataDir, 'app.db'));
+export const dbPath = join(dataDir, 'app.db');
+const db = new DatabaseSync(dbPath);
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS challenges (
