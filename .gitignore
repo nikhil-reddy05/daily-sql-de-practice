@@ -5,3 +5,6 @@ dist/
 *.db-journal
 .DS_Store
 server/public/
+codex-docs/
+tickets/
+AGENTS.md
