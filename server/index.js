@@ -43,6 +43,7 @@ import {
 } from './auth.js';
 import { planComplete, planModel, PlanError, MANAGE_USAGE_URL } from './planClient.js';
 import { cryptoBootWarnings } from './crypto.js';
+import { localHttpSecurity } from './httpSecurity.js';
 
 // The app is created without opening a listener so integration tests can use
 // an ephemeral port and replace boot-time remote validation with a fake.
@@ -54,6 +55,9 @@ export function createApp({
 } = {}) {
 const here = dirname(fileURLToPath(import.meta.url));
 const app = express();
+// This runs before JSON parsing and every route, including GET /api/today,
+// which can persist a new set and call an AI provider.
+app.use(localHttpSecurity({ getPort: () => runtime.port }));
 app.use(express.json({ limit: '1mb' }));
 
 (startup.cryptoBootWarnings || cryptoBootWarnings)();
