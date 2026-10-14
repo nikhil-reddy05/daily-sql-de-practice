@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import { existsSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import db from './db.js';
 import { chat, isConfigured, aiStatus } from './ai.js';
@@ -44,15 +44,22 @@ import {
 import { planComplete, planModel, PlanError, MANAGE_USAGE_URL } from './planClient.js';
 import { cryptoBootWarnings } from './crypto.js';
 
+// The app is created without opening a listener so integration tests can use
+// an ephemeral port and replace boot-time remote validation with a fake.
+export function createApp({
+  port = Number(process.env.PORT || 3000),
+  appUrl = process.env.APP_URL || '',
+  startup = {},
+  runtime = { port, appUrl },
+} = {}) {
 const here = dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.use(express.json({ limit: '1mb' }));
 
-const PORT = Number(process.env.PORT || 3000);
-const APP_URL = process.env.APP_URL || '';
-
-cryptoBootWarnings();
-validateOpenIdConfiguration();
+(startup.cryptoBootWarnings || cryptoBootWarnings)();
+if (startup.validateOidc !== false) {
+  void (startup.validateOpenIdConfiguration || validateOpenIdConfiguration)();
+}
 
 function localDateKey(d = new Date()) {
   const y = d.getFullYear();
@@ -284,7 +291,7 @@ function authState(req) {
 
 app.get('/api/auth/login', (req, res) => {
   try {
-    const url = buildAuthorizeUrl({ port: PORT, appUrl: APP_URL });
+    const url = buildAuthorizeUrl({ port: runtime.port, appUrl: runtime.appUrl });
     res.redirect(url);
   } catch (err) {
     res.status(500).send(`Could not start sign-in: ${err.message}`);
@@ -299,8 +306,8 @@ app.get('/api/auth/callback', async (req, res) => {
     const user = await handleCallback({
       code: String(code),
       state: String(state),
-      port: PORT,
-      appUrl: APP_URL,
+      port: runtime.port,
+      appUrl: runtime.appUrl,
     });
     setSessionCookie(res, user.id);
     res.redirect('/?auth=ok');
@@ -578,7 +585,43 @@ if (existsSync(publicDir)) {
   app.get('/', (req, res) => res.send('API running. Build the client with `npm run build` from the repo root.'));
 }
 
-app.listen(PORT, () => {
-  console.log(`daily-sql-de-practice listening on http://localhost:${PORT}`);
-  console.log(`Sign-in callback: ${redirectUri(PORT, APP_URL)}`);
-});
+return app;
+}
+
+export function startServer(options = {}) {
+  const requestedPort = options.port ?? Number(process.env.PORT || 3000);
+  const host = options.host || '127.0.0.1';
+  const runtime = { port: requestedPort, appUrl: options.appUrl ?? (process.env.APP_URL || '') };
+  const app = createApp({ ...options, port: requestedPort, runtime });
+
+  return new Promise((resolveServer, reject) => {
+    const server = app.listen(requestedPort, host);
+    const rejectStartup = (err) => reject(err);
+    server.once('error', rejectStartup);
+    server.once('listening', () => {
+      server.off('error', rejectStartup);
+      const address = server.address();
+      runtime.port = typeof address === 'object' && address ? address.port : requestedPort;
+      resolveServer({
+        app,
+        server,
+        port: runtime.port,
+        close: () =>
+          new Promise((resolveClose, rejectClose) =>
+            server.close((err) => (err ? rejectClose(err) : resolveClose()))
+          ),
+      });
+    });
+  });
+}
+
+const isMainModule = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMainModule) {
+  startServer().then(({ port }) => {
+    console.log(`daily-sql-de-practice listening on http://127.0.0.1:${port}`);
+    console.log(`Sign-in callback: ${redirectUri(port, process.env.APP_URL || '')}`);
+  }).catch((err) => {
+    console.error(`Could not start server: ${err.message}`);
+    process.exitCode = 1;
+  });
+}

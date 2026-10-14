@@ -29,20 +29,22 @@ A daily practice app for data engineers: every day you get **2 SQL problems + 2 
 
 ## Quickstart
 
-Requires Node 20+.
+Requires Node 24 LTS (see `.nvmrc`). Older Node releases cannot run this app because it uses Node's built-in SQLite support.
 
 ```bash
 npm install
+npm run check
 npm run build
 npm start
 ```
 
-Open http://localhost:3000. That's it — the SQLite database (`data/app.db`) is created and migrated automatically on first boot.
+Open http://127.0.0.1:3000. That's it — the SQLite database (`data/app.db`) is created and migrated automatically on first boot. `npm run check` uses an operating-system temporary database and never writes to `data/app.db`.
 
 | Script | What it does |
 |---|---|
 | `npm run dev` | Run API + client with hot reload (two terminals in one) |
 | `npm run build` | Build the client into `server/public` |
+| `npm run check` | Run isolated server tests, then TypeScript and the Vite production build |
 | `npm start` | Serve the API + built client on `$PORT` (default 3000) |
 
 ## Sign in with ChatGPT (recommended)
